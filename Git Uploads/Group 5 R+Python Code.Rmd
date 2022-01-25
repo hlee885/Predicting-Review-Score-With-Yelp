@@ -1,0 +1,1262 @@
+# Note: below are codes written in Python for data cleaning and engineering
+# we include this together with our R code for model fitting and prediction
+
+{
+  "nbformat": 4,
+  "nbformat_minor": 0,
+  "metadata": {
+    "colab": {
+      "name": "stat333_proj2.ipynb",
+      "provenance": [],
+      "collapsed_sections": []
+    },
+    "kernelspec": {
+      "name": "python3",
+      "display_name": "Python 3"
+    },
+    "language_info": {
+      "name": "python"
+    }
+  },
+  "cells": [
+    {
+      "cell_type": "code",
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "86uX5XGX7Ma-",
+        "outputId": "7ccf99bf-335b-4ce8-bfee-09090ca597df"
+      },
+      "source": [
+        "!gdown https://drive.google.com/u/1/uc?id=1sXKjnC9Bb0Gn171pl86GBIAL1NKdHiZ0\n",
+        "!gdown https://drive.google.com/u/1/uc?id=1FRYA-te23_k-wRBHBtte22wCwrAw7a0a\n",
+        "!gdown https://drive.google.com/u/1/uc?id=1pAeyLFT4esMyAMfJkWmFqo2VNWFOUrqk\n",
+        "!gdown https://drive.google.com/u/1/uc?id=1xe34Ythww_-FWAYQR31tuU4jwJP2tkuY\n",
+        "!unzip YelpData.zip"
+      ],
+      "execution_count": null,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "Downloading...\n",
+            "From: https://drive.google.com/u/1/uc?id=1sXKjnC9Bb0Gn171pl86GBIAL1NKdHiZ0\n",
+            "To: /content/YelpData.zip\n",
+            "100% 44.3M/44.3M [00:01<00:00, 34.8MB/s]\n",
+            "Downloading...\n",
+            "From: https://drive.google.com/u/1/uc?id=1FRYA-te23_k-wRBHBtte22wCwrAw7a0a\n",
+            "To: /content/test_data_after_VIF.csv\n",
+            "100% 22.9M/22.9M [00:00<00:00, 49.3MB/s]\n",
+            "Downloading...\n",
+            "From: https://drive.google.com/u/1/uc?id=1pAeyLFT4esMyAMfJkWmFqo2VNWFOUrqk\n",
+            "To: /content/new_train_yelp.csv\n",
+            "100% 128M/128M [00:01<00:00, 68.6MB/s]\n",
+            "Downloading...\n",
+            "From: https://drive.google.com/u/1/uc?id=1xe34Ythww_-FWAYQR31tuU4jwJP2tkuY\n",
+            "To: /content/new_test_yelp.csv\n",
+            "100% 85.4M/85.4M [00:01<00:00, 70.2MB/s]\n",
+            "Archive:  YelpData.zip\n",
+            "  inflating: test_yelp.csv           \n",
+            "  inflating: __MACOSX/._test_yelp.csv  \n",
+            "  inflating: train_yelp.csv          \n",
+            "  inflating: __MACOSX/._train_yelp.csv  \n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "5g6AWCKT8jbS",
+        "outputId": "dc494c6f-69cb-4087-fba0-85ae683cf566"
+      },
+      "source": [
+        "import pandas as pd\n",
+        "import nltk\n",
+        "nltk.download('punkt')\n",
+        "nltk.download('averaged_perceptron_tagger')\n",
+        "nltk.download('wordnet')\n",
+        "nltk.download('words')\n",
+        "nltk.download('universal_tagset')"
+      ],
+      "execution_count": null,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "[nltk_data] Downloading package punkt to /root/nltk_data...\n",
+            "[nltk_data]   Unzipping tokenizers/punkt.zip.\n",
+            "[nltk_data] Downloading package averaged_perceptron_tagger to\n",
+            "[nltk_data]     /root/nltk_data...\n",
+            "[nltk_data]   Unzipping taggers/averaged_perceptron_tagger.zip.\n",
+            "[nltk_data] Downloading package wordnet to /root/nltk_data...\n",
+            "[nltk_data]   Unzipping corpora/wordnet.zip.\n",
+            "[nltk_data] Downloading package words to /root/nltk_data...\n",
+            "[nltk_data]   Unzipping corpora/words.zip.\n",
+            "[nltk_data] Downloading package universal_tagset to /root/nltk_data...\n",
+            "[nltk_data]   Unzipping taggers/universal_tagset.zip.\n"
+          ]
+        },
+        {
+          "output_type": "execute_result",
+          "data": {
+            "text/plain": [
+              "True"
+            ]
+          },
+          "metadata": {},
+          "execution_count": 2
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "WbGE4y2o_Ruc"
+      },
+      "source": [
+        "from nltk.tokenize import word_tokenize \n",
+        "from nltk.stem import PorterStemmer\n",
+        "from nltk.stem import WordNetLemmatizer\n",
+        "from nltk import pos_tag\n",
+        "from nltk.corpus import wordnet\n",
+        "import string\n",
+        "from tqdm import tqdm\n",
+        "\n",
+        "def add_features(df, topn, new_adj=None):\n",
+        "  english_words = set(nltk.corpus.words.words())\n",
+        "  wnl = WordNetLemmatizer()\n",
+        "  df_adj_occur = []\n",
+        "\n",
+        "  df['text'] = df['text'].apply(lambda text: text.translate(str.maketrans('', '', string.punctuation)).lower())\n",
+        "  df['text'] = df['text'].apply(lambda text: ' '.join([word for word in text.split() if word in english_words]))\n",
+        "\n",
+        "  for text in tqdm(df['text']):\n",
+        "    text_adj_occur = {}\n",
+        "    text_tagged = pos_tag(word_tokenize(text))\n",
+        "    text_adj = [wnl.lemmatize(word, wordnet.ADJ) for word, tag in text_tagged if tag == 'JJ' or tag == 'NN']\n",
+        "    for adj in text_adj:\n",
+        "      if adj in text_adj_occur:\n",
+        "        text_adj_occur[adj] += 1\n",
+        "      else:\n",
+        "        text_adj_occur[adj] = 1\n",
+        "    df_adj_occur.append(text_adj_occur)\n",
+        "\n",
+        "  if not new_adj:\n",
+        "    global_adj_occur = {}\n",
+        "    for text_adj_occur in df_adj_occur:\n",
+        "      for adj, occur in text_adj_occur.items():\n",
+        "        if adj in global_adj_occur:\n",
+        "          global_adj_occur[adj] += occur\n",
+        "        else:\n",
+        "          global_adj_occur[adj] = occur\n",
+        "\n",
+        "    global_adj_occur_sorted = sorted(global_adj_occur.items(), key=lambda x: x[1], reverse=True)\n",
+        "\n",
+        "    new_adj = []\n",
+        "    for adj, occur in global_adj_occur_sorted:\n",
+        "      if len(new_adj) > topn: break\n",
+        "      if adj not in set(df.columns):\n",
+        "        new_adj.append(adj)\n",
+        "\n",
+        "  for adj in new_adj:\n",
+        "    adj_occur = []\n",
+        "    for text_adj_occur in df_adj_occur:\n",
+        "      if adj in text_adj_occur:\n",
+        "        adj_occur.append(text_adj_occur[adj])\n",
+        "      else:\n",
+        "        adj_occur.append(0)\n",
+        "    df[adj] = adj_occur\n",
+        "\n",
+        "  return df, new_adj"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "pxu561feI8v0"
+      },
+      "source": [
+        "import string\n",
+        "\n",
+        "def add_turning_word_flag(df, word_li):\n",
+        "  english_words = set(nltk.corpus.words.words())\n",
+        "  df['text'] = df['text'].apply(lambda text: text.translate(str.maketrans('', '', string.punctuation)).lower())\n",
+        "  df['text'] = df['text'].apply(lambda text: ' '.join([word for word in text.split() if word in english_words]))\n",
+        "  has_but = []\n",
+        "  for text in df['text']:\n",
+        "    for word in word_li:\n",
+        "      if word in text:\n",
+        "        has_but.append(1)\n",
+        "        break\n",
+        "    else:\n",
+        "      has_but.append(0)\n",
+        "        \n",
+        "  df['has_but'] = has_but\n",
+        "  return df"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "T-2o1E8Sg-LX"
+      },
+      "source": [
+        "import string\n",
+        "\n",
+        "def add_turning_word_count(df, word_li):\n",
+        "  english_words = set(nltk.corpus.words.words())\n",
+        "  df['text'] = df['text'].apply(lambda text: text.translate(str.maketrans('', '', string.punctuation)).lower())\n",
+        "  df['text'] = df['text'].apply(lambda text: ' '.join([word for word in text.split() if word in english_words]))\n",
+        "  num_but = []\n",
+        "  for text in df['text']:\n",
+        "    if type(text) != str:\n",
+        "      num_but.append(0)\n",
+        "      continue\n",
+        "    num = 0\n",
+        "    for word in word_li:\n",
+        "      num += text.count(word)\n",
+        "    num_but.append(num)\n",
+        "        \n",
+        "  df['num_but'] = num_but\n",
+        "  return df"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "8eEm3I35DWRC",
+        "outputId": "7761bb56-ad40-499a-d90f-86280cec3f70"
+      },
+      "source": [
+        "csv_name = 'train_yelp.csv'\n",
+        "df = pd.read_csv(csv_name)\n",
+        "df, new_adj = add_features(df, 1000)\n",
+        "df = add_turning_word_count(df, ['yet', 'but', 'however'])\n",
+        "df.to_csv('new_' + csv_name)\n",
+        "del df"
+      ],
+      "execution_count": null,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stderr",
+          "text": [
+            "100%|██████████| 96423/96423 [07:47<00:00, 206.07it/s]\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "pAVCS9SmETwg",
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "outputId": "744eea7a-51df-42a6-b570-7a9ca39c2e9a"
+      },
+      "source": [
+        "csv_name = 'test_yelp.csv'\n",
+        "df = pd.read_csv(csv_name)\n",
+        "df, new_adj = add_features(df, 1000, new_adj)\n",
+        "df = add_turning_word_count(df, ['yet', 'but', 'however'])\n",
+        "df.to_csv('new_' + csv_name)"
+      ],
+      "execution_count": null,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stderr",
+          "text": [
+            "100%|██████████| 64282/64282 [05:13<00:00, 204.88it/s]\n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "i8Gj3agnHRYG"
+      },
+      "source": [
+        "from sklearn import preprocessing\n",
+        "\n",
+        "train_data = pd.read_csv('new_train_yelp.csv')\n",
+        "full_features = list(train_data.columns)\n",
+        "full_features.remove('text')\n",
+        "full_features.remove('Id')\n",
+        "full_features.remove('city')\n",
+        "full_features.remove('name')\n",
+        "encoder = preprocessing.LabelEncoder()\n",
+        "train_data['postalCode'] = encoder.fit_transform(train_data['postalCode'])\n",
+        "train_data = add_turning_word_count(train_data, ['yet', 'but', 'however'])\n",
+        "vif_features = full_features\n",
+        "vif_features.remove('postalCode')\n",
+        "vif_features.remove('nChar')\n",
+        "vif_features.remove('nWord')\n",
+        "vif_features.remove('star')"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "hpkmlqYlq8Bq"
+      },
+      "source": [
+        "from sklearn.model_selection import train_test_split\n",
+        "from sklearn.metrics import accuracy_score\n",
+        "from sklearn.model_selection import cross_val_score\n",
+        "\n",
+        "\n",
+        "X, y = train_data[vif_features], train_data['star']\n",
+        "X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "Mf88osx7x1bm",
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "outputId": "cd90c9d3-74c3-4816-888e-63ba0fd5dadc"
+      },
+      "source": [
+        "from itertools import zip_longest\n",
+        "from statistics import mean\n",
+        "from sklearn.metrics import mean_squared_error\n",
+        "from sklearn.linear_model import LinearRegression\n",
+        "\n",
+        "linear_model = LinearRegression().fit(X_train, y_train)\n",
+        "predictions = linear_model.predict(X_test)\n",
+        "print('rmse:', mean_squared_error(y_test, predictions, squared=False))\n",
+        "print()\n",
+        "\n",
+        "positive_features, negative_features = {}, {}\n",
+        "for i, coef, in enumerate(linear_model.coef_):\n",
+        "  if coef > 0: \n",
+        "    positive_features[vif_features[i]] = coef\n",
+        "  else:\n",
+        "    negative_features[vif_features[i]] = coef\n",
+        "\n",
+        "positive_score_mean = mean(positive_features.values())\n",
+        "negative_score_mean = mean(negative_features.values())\n",
+        "\n",
+        "# positive_features = {key:val/positive_score_mean for key, val in positive_features.items()}\n",
+        "# negative_features = {key:val/negative_score_mean for key, val in negative_features.items()}\n",
+        "dict_val = lambda x: x[1]\n",
+        "\n",
+        "print(f'Positive          Negative')\n",
+        "for pos_tuple, neg_tuple in zip_longest(sorted(positive_features.items(), key=dict_val, reverse=True), sorted(negative_features.items(), key=dict_val)):\n",
+        "  if pos_tuple is not None:\n",
+        "    pos_name, pos_val = pos_tuple\n",
+        "    pos_name, pos_val = str(pos_name), str(round(pos_val, 2)*10).split('.')[0]\n",
+        "  else:\n",
+        "    pos_name, pos_val = 'None', ''\n",
+        "  if neg_tuple is not None:\n",
+        "    neg_name, neg_val = neg_tuple\n",
+        "    neg_name, neg_val = str(neg_name), str(round(neg_val, 2)*10).split('.')[0]\n",
+        "  else:\n",
+        "    neg_name, neg_val = 'None', ''\n",
+        "\n",
+        "  print(f\"{pos_name+' '+pos_val:<18}{neg_name+' '+neg_val}\")\n"
+      ],
+      "execution_count": null,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "rmse: 0.9997701471214261\n",
+            "\n",
+            "Positive          Negative\n",
+            "incredible 4      poison -9\n",
+            "goody 3           mcdonald's -8\n",
+            "bomb 3            overrate -7\n",
+            "phenomenal 3      filthy -7\n",
+            "outstanding 3     horrible -6\n",
+            "superb 3          tasteless -6\n",
+            "amazing 3         rude -6\n",
+            "terrific 3        wtf -6\n",
+            "divine 3          mcdonalds -6\n",
+            "exceed 3          unprofessional -6\n",
+            "exquisite 3       awful -5\n",
+            "unassuming 2      refuse -5\n",
+            "scrumptious 2     terrible -5\n",
+            "thank 2           disappointing -5\n",
+            "messy 2           downhill -5\n",
+            "forget 2          disaster -5\n",
+            "fantastic 2       disgust -5\n",
+            "rudely 2          garbage -5\n",
+            "dream 2           understaffed -5\n",
+            "notch 2           wont -5\n",
+            "glad 2            disappointed -5\n",
+            "delicious 2       subpar -5\n",
+            "above 2           unfriendly -4\n",
+            "courteous 2       burnt -4\n",
+            "excellent 2       waste -4\n",
+            "awesome 2         disappointment -4\n",
+            "obsess 2          flavorless -4\n",
+            "jeni's 2          mediocre -4\n",
+            "magical 2         poor -4\n",
+            "addict 2          rubbery -4\n",
+            "impeccable 2      screw -4\n",
+            "takeover 2        ignore -4\n",
+            "professional 2    undercooked -4\n",
+            "secret 2          management -4\n",
+            "exceptional 2     joke -4\n",
+            "fabulous 2        microwave -4\n",
+            "smile 2           bland -4\n",
+            "delish 2          pathetic -4\n",
+            "highly 2          acknowledge -3\n",
+            "heaven 2          slow -3\n",
+            "handmade 2        needless -3\n",
+            "patient 2         lukewarm -3\n",
+            "nashville 2       stale -3\n",
+            "great 2           gross -3\n",
+            "wonderful 2       nasty -3\n",
+            "central 2         potential -3\n",
+            "amaze 2           unacceptable -3\n",
+            "love 2            trash -3\n",
+            "god 2             wouldnt -3\n",
+            "weve 2            machine -3\n",
+            "knowledgeable 1   ruin -3\n",
+            "sooo 1            sick -3\n",
+            "affordable 1      embarrass -3\n",
+            "cbus 1            cancel -3\n",
+            "friendly 1        inedible -3\n",
+            "buck 1            decline -3\n",
+            "caramel 1         shame -3\n",
+            "world 1           barely -3\n",
+            "consistent 1      angry -3\n",
+            "happy 1           unpleasant -3\n",
+            "go 1              argue -3\n",
+            "perfect 1         dry -3\n",
+            "gem 1             min -2\n",
+            "guide 1           sad -2\n",
+            "reasonable 1      dirty -2\n",
+            "obvious 1         frustrate -2\n",
+            "authentic 1       fuck -2\n",
+            "massive 1         ordered -2\n",
+            "mother 1          shut -2\n",
+            "staple 1          soggy -2\n",
+            "holy 1            money -2\n",
+            "amazingly 1       lack -2\n",
+            "skeptical 1       ridiculous -2\n",
+            "downside 1        policy -2\n",
+            "complaint 1       average -2\n",
+            "drool 1           mess -2\n",
+            "gorgeous 1        frozen -2\n",
+            "adorable 1        upset -2\n",
+            "bonus 1           par -2\n",
+            "informative 1     sat -2\n",
+            "politely 1        sorry -2\n",
+            "respond 1         favor -2\n",
+            "personable 1      whatsoever -2\n",
+            "flag 1            piss -2\n",
+            "reply 1           drive -2\n",
+            "chill 1           attitude -2\n",
+            "comfort 1         hour -2\n",
+            "aware 1           response -2\n",
+            "treat 1           luck -2\n",
+            "generous 1        hair -2\n",
+            "find 1            refund -2\n",
+            "thoughtful 1      proceed -2\n",
+            "pleasure 1        yuck -2\n",
+            "youve 1           cold -2\n",
+            "moment 1          tough -2\n",
+            "picky 1           incorrect -2\n",
+            "everything 1      salty -2\n",
+            "helpful 1         redeem -2\n",
+            "fast 1            phone -1\n",
+            "mouth 1           uncomfortable -1\n",
+            "brand 1           empty -1\n",
+            "stew 1            chewy -1\n",
+            "plantain 1        decent -1\n",
+            "fav 1             flat -1\n",
+            "sister 1          grease -1\n",
+            "heart 1           break -1\n",
+            "vibes 1           nothing -1\n",
+            "ask 1             werent -1\n",
+            "satisfied 1       impossible -1\n",
+            "cant 1            one -1\n",
+            "town 1            bad -1\n",
+            "yellow 1          inconvenience -1\n",
+            "lick 1            cashier -1\n",
+            "healthy 1         greasy -1\n",
+            "upbeat 1          expensive -1\n",
+            "pancake 1         ketchup -1\n",
+            "brew 1            wonderfully -1\n",
+            "wow 1             serious -1\n",
+            "unique 1          sign -1\n",
+            "quick 1           yell -1\n",
+            "smooth 1          bottom -1\n",
+            "pool 1            excuse -1\n",
+            "life 1            additional -1\n",
+            "beautifully 1     cook -1\n",
+            "apologize 1       wasnt -1\n",
+            "juicy 1           mistake -1\n",
+            "extensive 1       smell -1\n",
+            "yum 1             air -1\n",
+            "skillet 1         receipt -1\n",
+            "picture 1         speaker -1\n",
+            "fresh 1           loud -1\n",
+            "mention 1         explanation -1\n",
+            "exception 1       stick -1\n",
+            "point 1           guess -1\n",
+            "wild 1            crap -1\n",
+            "delight 1         bill -1\n",
+            "flavorful 1       bell -1\n",
+            "pastor 1          serving -1\n",
+            "matter 1          interested -1\n",
+            "welcoming 1       edible -1\n",
+            "important 1       addictive -1\n",
+            "homemade 1        none -1\n",
+            "hit 1             strange -1\n",
+            "fun 1             effort -1\n",
+            "worth 1           employee -1\n",
+            "clean 1           doesnt -1\n",
+            "efficient 1       plastic -1\n",
+            "update 1          fine -1\n",
+            "super 1           pass -1\n",
+            "single 1          lettuce -1\n",
+            "truffle 1         contact -1\n",
+            "genuine 1         return -1\n",
+            "favorite 1        rating -1\n",
+            "lentil 1          concept -1\n",
+            "situation 1       syrup -1\n",
+            "snow 1            odd -1\n",
+            "owner 1           business -1\n",
+            "woman 1           establishment -1\n",
+            "butter 1          someone -1\n",
+            "lucky 1           crappy -1\n",
+            "passion 1         wrong -1\n",
+            "famous 1          block -1\n",
+            "kind 0            hurry -1\n",
+            "fancy 0           football -1\n",
+            "heavenly 0        call -1\n",
+            "week 0            comment -1\n",
+            "strawberry 0      gift -1\n",
+            "grocery 0         college -1\n",
+            "advice 0          third -1\n",
+            "beautiful 0       decadent -1\n",
+            "hubby 0           example -1\n",
+            "spectacular 0     raw -1\n",
+            "class 0           waiter -1\n",
+            "west 0            stand -1\n",
+            "trip 0            broccoli -1\n",
+            "seasonal 0        water -1\n",
+            "elegant 0         desk -1\n",
+            "vegan 0           product -1\n",
+            "cause 0           bathroom -1\n",
+            "cajun 0           shot -1\n",
+            "hole 0            didnt -1\n",
+            "recommendation 0  reservation -1\n",
+            "mac 0             cost -1\n",
+            "random 0          system -1\n",
+            "anniversary 0     airport -1\n",
+            "lovely 0          weird -1\n",
+            "tasty 0           bartender -1\n",
+            "stuffed 0         romantic -1\n",
+            "hidden 0          piece -1\n",
+            "pineapple 0       waitress -1\n",
+            "al 0              basic -1\n",
+            "team 0            doubt -1\n",
+            "covid 0           please -1\n",
+            "question 0        brick -1\n",
+            "goat 0            bag -1\n",
+            "pound 0           sugar -1\n",
+            "brisket 0         box -0\n",
+            "eating 0          correct -0\n",
+            "omg 0             garage -0\n",
+            "care 0            toilet -0\n",
+            "damn 0            taste -0\n",
+            "weekend 0         district -0\n",
+            "talk 0            tasted -0\n",
+            "convention 0      tonight -0\n",
+            "separate 0        blame -0\n",
+            "fire 0            price -0\n",
+            "difference 0      overall -0\n",
+            "wedge 0           dont -0\n",
+            "havent 0          quantity -0\n",
+            "stop 0            miss -0\n",
+            "classy 0          idea -0\n",
+            "enough 0          manager -0\n",
+            "polite 0          chance -0\n",
+            "seat 0            pick -0\n",
+            "home 0            mean -0\n",
+            "easy 0            limited -0\n",
+            "beverage 0        clear -0\n",
+            "cozy 0            main -0\n",
+            "opening 0         charge -0\n",
+            "family 0          bunch -0\n",
+            "eggplant 0        attention -0\n",
+            "attentive 0       apology -0\n",
+            "east 0            dollar -0\n",
+            "band 0            rate -0\n",
+            "specialty 0       last -0\n",
+            "diet 0            card -0\n",
+            "yelp 0            location -0\n",
+            "comfortable 0     register -0\n",
+            "pepperoni 0       hope -0\n",
+            "jerk 0            bright -0\n",
+            "strip 0           same -0\n",
+            "take 0            total -0\n",
+            "smoked 0          salt -0\n",
+            "stuff 0           ground -0\n",
+            "everyone 0        today -0\n",
+            "spice 0           sticky -0\n",
+            "blue 0            stomach -0\n",
+            "inexpensive 0     multiple -0\n",
+            "popular 0         order -0\n",
+            "lemonade 0        plain -0\n",
+            "tender 0          minute -0\n",
+            "rare 0            temperature -0\n",
+            "cherry 0          bloody -0\n",
+            "wheat 0           offer -0\n",
+            "hot 0             standard -0\n",
+            "sesame 0          door -0\n",
+            "kick 0            customer -0\n",
+            "free 0            start -0\n",
+            "surprise 0        kitchen -0\n",
+            "yummy 0           inquire -0\n",
+            "stellar 0         available -0\n",
+            "trouble 0         flavor -0\n",
+            "plenty 0          young -0\n",
+            "future 0          texture -0\n",
+            "cute 0            store -0\n",
+            "goodness 0        medium -0\n",
+            "creative 0        remake -0\n",
+            "conversation 0    excited -0\n",
+            "nice 0            old -0\n",
+            "wall 0            part -0\n",
+            "course 0          reason -0\n",
+            "mind 0            sour -0\n",
+            "hearty 0          rush -0\n",
+            "country 0         brother -0\n",
+            "quiet 0           insult -0\n",
+            "complement 0      melt -0\n",
+            "quaint 0          floor -0\n",
+            "moist 0           help -0\n",
+            "sit 0             pot -0\n",
+            "die 0             history -0\n",
+            "truck 0           spring -0\n",
+            "winter 0          drink -0\n",
+            "enjoy 0           recent -0\n",
+            "huge 0            n -0\n",
+            "bourbon 0         watch -0\n",
+            "live 0            positive -0\n",
+            "seasoned 0        hint -0\n",
+            "lighting 0        option -0\n",
+            "convenient 0      hash -0\n",
+            "shop 0            way -0\n",
+            "campus 0          tomato -0\n",
+            "month 0           container -0\n",
+            "date 0            awhile -0\n",
+            "wide 0            hostess -0\n",
+            "buckeye 0         pop -0\n",
+            "outside 0         oil -0\n",
+            "parking 0         late -0\n",
+            "mood 0            crowd -0\n",
+            "falafel 0         hip -0\n",
+            "personal 0        line -0\n",
+            "waffle 0          impression -0\n",
+            "wish 0            inattentive -0\n",
+            "village 0         witness -0\n",
+            "wait 0            server -0\n",
+            "oh 0              sub -0\n",
+            "spacious 0        club -0\n",
+            "day 0             cash -0\n",
+            "section 0         cheesecake -0\n",
+            "badly 0           low -0\n",
+            "husband 0         version -0\n",
+            "willing 0         carry -0\n",
+            "lamb 0            credit -0\n",
+            "fare 0            gravy -0\n",
+            "first 0           fat -0\n",
+            "light 0           pastry -0\n",
+            "tea 0             barbecue -0\n",
+            "boy 0             normal -0\n",
+            "perfection 0      slice -0\n",
+            "joy 0             num_but -0\n",
+            "spot 0            sauerkraut -0\n",
+            "fork 0            meat -0\n",
+            "flight 0          party -0\n",
+            "cheesy 0          handful -0\n",
+            "soy 0             hard -0\n",
+            "mary 0            fave -0\n",
+            "crowded 0         seasoning -0\n",
+            "frequent 0        coke -0\n",
+            "atmosphere 0      spoon -0\n",
+            "good 0            design -0\n",
+            "note 0            mustard -0\n",
+            "chip 0            morning -0\n",
+            "jam 0             refill -0\n",
+            "organic 0         high -0\n",
+            "spicy 0           interesting -0\n",
+            "pleasant 0        tapas -0\n",
+            "york 0            arena -0\n",
+            "right 0           discount -0\n",
+            "deep 0            tiny -0\n",
+            "base 0            bed -0\n",
+            "delectable 0      ate -0\n",
+            "tap 0             milk -0\n",
+            "delightful 0      ten -0\n",
+            "able 0            tasting -0\n",
+            "puff 0            half -0\n",
+            "banana 0          table -0\n",
+            "environment 0     person -0\n",
+            "wife 0            word -0\n",
+            "state 0           past -0\n",
+            "number 0          change -0\n",
+            "vegetarian 0      perfectly -0\n",
+            "variety 0         garden -0\n",
+            "fault 0           tortilla -0\n",
+            "social 0          pickle -0\n",
+            "true 0            due -0\n",
+            "fall 0            corporate -0\n",
+            "tater 0           mine -0\n",
+            "poke 0            dim -0\n",
+            "walk 0            left -0\n",
+            "dine 0            brown -0\n",
+            "music 0           use -0\n",
+            "school 0          biscuit -0\n",
+            "year 0            plus -0\n",
+            "plentiful 0       salmon -0\n",
+            "cool 0            burrito -0\n",
+            "process 0         enjoyable -0\n",
+            "crispy 0          like -0\n",
+            "fluffy 0          bread -0\n",
+            "combination 0     list -0\n",
+            "nearby 0          chain -0\n",
+            "back 0            orange -0\n",
+            "cuisine 0         memorable -0\n",
+            "ample 0           fair -0\n",
+            "downtown 0        mixed -0\n",
+            "ravioli 0         hungry -0\n",
+            "pork 0            small -0\n",
+            "top 0             beer -0\n",
+            "sure 0            out -0\n",
+            "creamy 0          much -0\n",
+            "south 0           cheese -0\n",
+            "building 0        lemon -0\n",
+            "cinnamon 0        blueberry -0\n",
+            "particular 0      other -0\n",
+            "board 0           steak -0\n",
+            "basket 0          patio -0\n",
+            "recommend 0       middle -0\n",
+            "new 0             white -0\n",
+            "pearl 0           blend -0\n",
+            "gyro 0            company -0\n",
+            "sea 0             tip -0\n",
+            "apple 0           thought -0\n",
+            "yeah 0            crisp -0\n",
+            "prepared 0        platter -0\n",
+            "make 0            cup -0\n",
+            "prompt 0          hotel -0\n",
+            "refresh 0         male -0\n",
+            "review 0          dining -0\n",
+            "soft 0            window -0\n",
+            "occasion 0        need -0\n",
+            "chef 0            service -0\n",
+            "modern 0          sampler -0\n",
+            "feeling 0         mushroom -0\n",
+            "crust 0           u -0\n",
+            "familiar 0        bagel -0\n",
+            "slight 0          look -0\n",
+            "original 0        sauce -0\n",
+            "bit 0             group -0\n",
+            "fried 0           black -0\n",
+            "strong 0          deliciously -0\n",
+            "weekday 0         story -0\n",
+            "opinion 0         rip -0\n",
+            "prime 0           street -0\n",
+            "bowls 0           ambience -0\n",
+            "complimentary 0   yesterday -0\n",
+            "own 0             several -0\n",
+            "dad 0             draft -0\n",
+            "range 0           fruit -0\n",
+            "coconut 0         wood -0\n",
+            "quality 0         entire -0\n",
+            "mi 0              lime -0\n",
+            "little 0          rich -0\n",
+            "plan 0            similar -0\n",
+            "coupon 0          event -0\n",
+            "extra 0           baby -0\n",
+            "diner 0           something -0\n",
+            "gentleman 0       giant -0\n",
+            "rib 0             movie -0\n",
+            "style 0           soda -0\n",
+            "head 0            consistency -0\n",
+            "international 0   funny -0\n",
+            "slaw 0            thin -0\n",
+            "breakfast 0       eye -0\n",
+            "noodle 0          dressing -0\n",
+            "protein 0         dish -0\n",
+            "wine 0            ton -0\n",
+            "park 0            close -0\n",
+            "various 0         afternoon -0\n",
+            "road 0            problem -0\n",
+            "get 0             girl -0\n",
+            "honey 0           view -0\n",
+            "bakery 0          crunchy -0\n",
+            "market 0          ham -0\n",
+            "w 0               kale -0\n",
+            "while 0           let -0\n",
+            "neighborhood 0    sense -0\n",
+            "cocktail 0        ill -0\n",
+            "express 0         counter -0\n",
+            "summer 0          id -0\n",
+            "tried 0           guy -0\n",
+            "wedding 0         signature -0\n",
+            "presentation 0    pita -0\n",
+            "seating 0         act -0\n",
+            "savory 0          spinach -0\n",
+            "cabbage 0         restaurant -0\n",
+            "chop 0            glass -0\n",
+            "community 0       choice -0\n",
+            "snack 0           general -0\n",
+            "room 0            delivery -0\n",
+            "brewery 0         hell -0\n",
+            "casual 0          warm -0\n",
+            "iced 0            pay -0\n",
+            "next 0            roast -0\n",
+            "dessert 0         front -0\n",
+            "bun 0             simple -0\n",
+            "north 0           portion -0\n",
+            "book 0            venue -0\n",
+            "host 0            scene -0\n",
+            "suggestion 0      cucumber -0\n",
+            "bone 0            cole -0\n",
+            "special 0         cauliflower -0\n",
+            "deal 0            bar -0\n",
+            "cream 0           rest -0\n",
+            "peanut 0          likely -0\n",
+            "local 0           buffet -0\n",
+            "toast 0           broth -0\n",
+            "pudding 0         gluten -0\n",
+            "inside 0          bite -0\n",
+            "eat 0             chili -0\n",
+            "mix 0             tour -0\n",
+            "stay 0            item -0\n",
+            "brunch 0          soup -0\n",
+            "traditional 0     space -0\n",
+            "coffee 0          lady -0\n",
+            "corn 0            rock -0\n",
+            "pan 0             salad -0\n",
+            "juice 0           certain -0\n",
+            "poorly 0          green -0\n",
+            "daughter 0        female -0\n",
+            "ginger 0          typical -0\n",
+            "cheap 0           center -0\n",
+            "run 0             drunk -0\n",
+            "staff 0           sweetness -0\n",
+            "area 0            pretzel -0\n",
+            "pie 0             heat -0\n",
+            "tikka 0           decision -0\n",
+            "full 0            ale -0\n",
+            "selection 0       noise -0\n",
+            "liquor 0          heavy -0\n",
+            "think 0           eater -0\n",
+            "craft 0           el -0\n",
+            "arent 0           type -0\n",
+            "mall 0            game -0\n",
+            "difficult 0       buttery -0\n",
+            "absolute 0        grill -0\n",
+            "impressive 0      fish -0\n",
+            "amount 0          omelette -0\n",
+            "large 0           crunch -0\n",
+            "sort 0            basil -0\n",
+            "check 0           gourmet -0\n",
+            "knowledgable 0    la -0\n",
+            "veal 0            issue -0\n",
+            "season 0          turkey -0\n",
+            "partner 0         baklava -0\n",
+            "upscale 0         show -0\n",
+            "place 0           omelet -0\n",
+            "entrance 0        possible -0\n",
+            "try 0             grilled -0\n",
+            "pad 0             alcohol -0\n",
+            "crazy 0           touch -0\n",
+            "pickup 0          member -0\n",
+            "duck 0            asparagus -0\n",
+            "ready 0           corner -0\n",
+            "cake 0            private -0\n",
+            "round 0           anything -0\n",
+            "dog 0             case -0\n",
+            "double 0          open -0\n",
+            "vegetable 0       crab -0\n",
+            "well 0            valet -0\n",
+            "busy 0            shrimp -0\n",
+            "job 0             time -0\n",
+            "different 0       station -0\n",
+            "chickpea 0        comp -0\n",
+            "distance 0        mild -0\n",
+            "pizza 0           negative -0\n",
+            "bang 0            youd -0\n",
+            "come 0            coleslaw -0\n",
+            "chai 0            major -0\n",
+            "night 0           dump -0\n",
+            "house 0           bacon -0\n",
+            "desert 0          pint -0\n",
+            "tad 0             traffic -0\n",
+            "neat 0            addition -0\n",
+            "ranch 0           chicken -0\n",
+            "value 0           thing -0\n",
+            "usual 0           fix -0\n",
+            "car 0             food -0\n",
+            "egg 0             tofu -0\n",
+            "office 0          anyone -0\n",
+            "patty 0           son -0\n",
+            "plate 0           dive -0\n",
+            "mango 0           rice -0\n",
+            "cut 0             couple -0\n",
+            "big 0             pretty -0\n",
+            "request 0         many -0\n",
+            "buffalo 0         visit -0\n",
+            "onion 0           size -0\n",
+            "work 0            vodka -0\n",
+            "opportunity 0     feel -0\n",
+            "filling 0         bubble -0\n",
+            "sandwich 0        safe -0\n",
+            "classic 0         curry -0\n",
+            "man 0             southern -0\n",
+            "hey 0             cap -0\n",
+            "wrap 0            irritate -0\n",
+            "long 0            shake -0\n",
+            "such 0            only -0\n",
+            "deliciousness 0   german -0\n",
+            "avocado 0         bean -0\n",
+            "shopping 0        lot -0\n",
+            "breast 0          filet -0\n",
+            "potato 0          face -0\n",
+            "joint 0           level -0\n",
+            "experience 0      interior -0\n",
+            "menu 0            i -0\n",
+            "mediterranean 0   thick -0\n",
+            "previous 0        driver -0\n",
+            "welcome 0         dip -0\n",
+            "baked 0           meal -0\n",
+            "daily 0           share -0\n",
+            "side 0            bison -0\n",
+            "step 0            balance -0\n",
+            "olive 0           real -0\n",
+            "cheeseburger 0    sausage -0\n",
+            "birthday 0        red -0\n",
+            "dark 0            complete -0\n",
+            "bottle 0          second -0\n",
+            "hand 0            ray -0\n",
+            "bisque 0          fan -0\n",
+            "early 0           end -0\n",
+            "vanilla 0         paper -0\n",
+            "oven 0            tavern -0\n",
+            "theyre 0          art -0\n",
+            "lunch 0           dough -0\n",
+            "pepper 0          intimate -0\n",
+            "almond 0          friend -0\n",
+            "actual 0          sweet -0\n",
+            "short 0           dinner -0\n",
+            "lobster 0         shell -0\n",
+            "entree 0          fact -0\n",
+            "dozen 0           solid -0\n",
+            "garlic 0          chocolate -0\n",
+            "st 0              appetizer -0\n",
+            "few 0             Unnamed: 0 -0\n",
+            "boneless 0        None \n",
+            "ice 0             None \n",
+            "margarita 0       None \n",
+            "booth 0           None \n",
+            "regular 0         None \n",
+            "roll 0            None \n",
+            "vinegar 0         None \n",
+            "carrot 0          None \n",
+            "pub 0             None \n",
+            "bowl 0            None \n",
+            "beef 0            None \n",
+            "whole 0           None \n",
+            "evening 0         None \n",
+            "tuna 0            None \n",
+            "key 0             None \n",
+            "outdoor 0         None \n",
+            "cooking 0         None \n",
+            "weather 0         None \n",
+            "pho 0             None \n"
+          ]
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "4klRCaxBVxP2"
+      },
+      "source": [
+        "# nWord, positiveScore, negativeScore, has_but\n",
+        "# TODO: increase number of adj, we neec to score (understand) our vocabulary better\n",
+        "\n",
+        "forest_features = ['postalCode', 'nChar', 'nWord', 'positiveScore', 'negativeScore', 'num_but']\n",
+        "\n",
+        "positive_scores, negative_scores = [], []\n",
+        "for _, row in train_data.iterrows():\n",
+        "  pos_score, neg_score = 0, 0\n",
+        "  for idx, column in enumerate(row):\n",
+        "      cname = train_data.columns[idx]\n",
+        "      if cname in positive_features and column:\n",
+        "        pos_score += positive_features[cname]\n",
+        "      if cname in negative_features and column:\n",
+        "        neg_score += negative_features[cname]\n",
+        "  positive_scores.append(pos_score)\n",
+        "  negative_scores.append(neg_score)\n",
+        "\n",
+        "train_data['positiveScore'] = positive_scores\n",
+        "train_data['negativeScore'] = negative_scores\n",
+        "\n",
+        "X, y = train_data[forest_features], train_data['star']\n",
+        "X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "M8-KuYgSYOuh",
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "outputId": "631095f8-2f90-4bcb-e1c9-beaee58faecd"
+      },
+      "source": [
+        "from sklearn.ensemble import RandomForestClassifier\n",
+        "\n",
+        "forest_model = RandomForestClassifier(n_estimators=200, random_state=10)\n",
+        "forest_model.fit(X_train, y_train)\n",
+        "predictions = forest_model.predict(X_test)\n",
+        "mean_squared_error(y_test, predictions, squared=False)"
+      ],
+      "execution_count": null,
+      "outputs": [
+        {
+          "output_type": "execute_result",
+          "data": {
+            "text/plain": [
+              "1.0439151689474184"
+            ]
+          },
+          "metadata": {},
+          "execution_count": 31
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "OhJFfWj1fHo0"
+      },
+      "source": [
+        "train_data.to_csv('train_with_scores.csv')"
+      ],
+      "execution_count": null,
+      "outputs": []
+    }
+  ]
+}
+
+#below are R code for training and model fitting
+
+# import data
+original_data = read.csv("train_with_scores.csv",header=TRUE,stringsAsFactors=FALSE)
+
+# Create train-test split of the original data
+smp_size <- floor(0.5 * nrow(original_data))
+set.seed(123)
+train_ind <- sample(seq_len(nrow(original_data)), size = smp_size)
+
+train_data <- original_data[train_ind, ]
+test_data <- original_data[-train_ind, ]
+
+target = train_data$star
+y_test = test_data$star
+
+# fit the train data into a MLR as default model
+train_data = train_data[ , -which(names(train_data) 
+                                  %in% c("star", "text","Id", "city", "name", "postalCode"))]
+train_data = subset(train_data, select = -c(1,2) )
+
+mlr_model_train = lm(target ~., data = train_data)
+y1 = predict(mlr_model_train)
+summary(mlr_model_train)
+
+library(car)
+vif(mlr_model_train)
+
+# fit the train data with random forest
+library(randomForest)
+y_rf = factor(target)
+
+train_fitting_data_rf = train_data[, c("nChar", "nWord", "positiveScore", "negativeScore", "num_but")]
+
+rf_model_train = randomForest(y_rf ~ ., data = train_fitting_data_rf, ntree = 200)
+
+print(rf_model_train)
+y2 = predict(rf_model_train)
+y2 = as.numeric(y2)
+
+# include additional features for ensemble learning with ctree
+z1 = train_data$positiveScore
+z2 = train_data$negativeScore
+z3 = train_data$num_but
+z4 = train_data$nWord
+z5 = train_data$nChar
+
+library(party)
+ensemble_train = data.frame(y1, y2, z1, z2, z3, z4, z5)
+str(ensemble_train)
+
+tree_model_train = ctree(target ~ ., data = ensemble_train)
+y_predict = predict(tree_model_train)
+
+
+y_predict[y_predict>=5] <- 5
+y_predict[y_predict<=1] <- 1
+plot(density(y_predict),  main="Predictions")
+
+print(sqrt(mean((y_predict - target)^2)))
+
+# fit the model with test data after feature selection
+fit_data = test_data[ , -which(names(test_data) %in% c("star", "text","Id", "city", "name", "postalCode"))]
+fit_data = subset(fit_data, select = -c(1,2) )
+
+y1 = predict(mlr_model_train, newdata = fit_data)
+
+# fit the model with random forest 
+test_fitting_data_rf = fit_data[, c("nChar", "nWord", "positiveScore", "negativeScore", "num_but")]
+
+y2 = predict(rf_model_train, newdata = test_fitting_data_rf)
+y2 = as.numeric(y2)
+
+z1 = fit_data$positiveScore
+z2 = fit_data$negativeScore
+z3 = fit_data$num_but
+z4 = fit_data$nWord
+z5 = fit_data$nChar
+
+# fit the y1 and y2 from mlr and rf with additional features in ensemble learning
+ensemble_test = data.frame(y1, y2, z1, z2, z3, z4, z5)
+
+y_predict_test = predict(tree_model_train, newdata = ensemble_test)
+y_predict_test[y_predict_test>=5] <- 5
+y_predict_test[y_predict_test<=1] <- 1
+
+plot(density(y_predict_test),  main="Predictions")
+plot(density(y_test),  main="Real Data")
+
+print(sqrt(mean((y_predict_test - y_test)^2)))
+
+
+
+
+# Below are R code for prediction
+# import data
+train_data = read.csv("train_with_scores.csv",header=TRUE,stringsAsFactors=FALSE)
+target = train_data$star
+
+# fit the train data into a MLR as default model
+train_data = train_data[ , -which(names(train_data) 
+                                  %in% c("star", "text","Id", "city", "name", "postalCode"))]
+train_data = subset(train_data, select = -c(1,2) )
+
+mlr_model_train = lm(target ~., data = train_data)
+y1 = predict(mlr_model_train)
+summary(mlr_model_train)
+
+# fit the train data with random forest
+library(randomForest)
+y_rf = factor(target)
+
+train_fitting_data_rf = train_data[, c("nChar", "nWord", "positiveScore", "negativeScore", "num_but")]
+
+rf_model_train = randomForest(y_rf ~ ., data = train_fitting_data_rf, ntree = 200)
+
+print(rf_model_train)
+y2 = predict(rf_model_train)
+y2 = as.numeric(y2)
+
+# include additional features for ensemble learning with ctree
+z1 = train_data$positiveScore
+z2 = train_data$negativeScore
+z3 = train_data$num_but
+z4 = train_data$nWord
+z5 = train_data$nChar
+
+library(party)
+ensemble_train = data.frame(y1, y2, z1, z2, z3, z4, z5)
+str(ensemble_train)
+
+tree_model_train = ctree(target ~ ., data = ensemble_train)
+y_predict = predict(tree_model_train)
+
+
+y_predict[y_predict>=5] <- 5
+y_predict[y_predict<=1] <- 1
+plot(density(y_predict))
+
+print(sqrt(mean((y_predict - target)^2)))
+
+
+# making predictions with above trained models
+test_data = read.csv("test_with_scores.csv",header=TRUE,stringsAsFactors=FALSE)
+
+# fit the model with test data after feature selection
+fit_data = test_data[ , -which(names(test_data) %in% c("star", "text","Id", "city", "name", "postalCode"))]
+fit_data = subset(fit_data, select = -c(1,2) )
+
+y1 = predict(mlr_model_train, newdata = fit_data)
+
+# fit the model with random forest 
+test_fitting_data_rf = fit_data[, c("nChar", "nWord", "positiveScore", "negativeScore", "num_but")]
+
+y2 = predict(rf_model_train, newdata = test_fitting_data_rf)
+y2 = as.numeric(y2)
+
+z1 = fit_data$positiveScore
+z2 = fit_data$negativeScore
+z3 = fit_data$num_but
+z4 = fit_data$nWord
+z5 = fit_data$nChar
+
+# fit the y1 and y2 from mlr and rf with additional features in ensemble learning
+ensemble_test = data.frame(y1, y2, z1, z2, z3, z4, z5)
+
+y_predict_test = predict(tree_model_train, newdata = ensemble_test)
+y_predict_test[y_predict_test>=5] <- 5
+y_predict_test[y_predict_test<=1] <- 1
+
+data = read.csv("train_with_scores.csv",header=TRUE,stringsAsFactors=FALSE)
+predictions = data.frame(data$Id, y_predict_test)
+write.csv(predictions, "./result_final.csv")
+
+
+
+
+
